@@ -1,20 +1,17 @@
 
+import os
+
 import streamlit as st
-from PIL import Image
-from transformers import pipeline
+import requests
+
+
+API_URL = os.getenv("API_URL", "http://localhost:3000/api/diagnoses")
 
 st.set_page_config(
     page_title="AI Crop Disease Detector",
     page_icon="🌱",
     layout="centered"
 )
-
-@st.cache_resource
-def load_model():
-    return pipeline(
-        "image-classification",
-        model="rodynaemad/plant-disease-dinov2-small"
-    )
 
 st.title("🌱 AI Crop Disease Detector")
 
@@ -34,10 +31,8 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-
     st.image(
-        image,
+        uploaded_file,
         caption="Uploaded plant image",
         use_container_width=True
     )
@@ -45,8 +40,20 @@ if uploaded_file is not None:
     if st.button("🔍 Detect Crop Disease", type="primary"):
         try:
             with st.spinner("AI is analyzing the image..."):
-                classifier = load_model()
-                results = classifier(image, top_k=3)
+                response = requests.post(
+                    API_URL,
+                    files={
+                        "image": (
+                            uploaded_file.name,
+                            uploaded_file.getvalue(),
+                            uploaded_file.type
+                        )
+                    },
+                    timeout=120
+                )
+                response.raise_for_status()
+                diagnosis = response.json()
+                results = diagnosis["predictions"]
 
             st.subheader("Analysis Results")
 
@@ -86,10 +93,10 @@ if uploaded_file is not None:
                 "choosing a treatment."
             )
 
-        except Exception as error:
+        except (requests.RequestException, KeyError, ValueError) as error:
             st.error(
                 "Could not analyze the image. "
-                "Check your internet connection and "
-                "terminal error, then try again."
+                "Check that the backend is running and "
+                "try again."
             )
             st.exception(error)
